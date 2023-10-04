@@ -21,20 +21,32 @@ fn parse_command(args: *std.process.ArgIterator) Command {
     // throw away the first argument, which is the program name
     _ = args.next();
 
-    var cmd = Command{ .key = "hah" };
+    var cmd = Command{ .key = "" };
 
     // Get the operation
     const operation = args.next();
     if (operation == null) {
-        std.log.warn("No operation specified", .{});
+        std.log.err("No operation specified", .{});
         std.process.exit(1);
     }
     if (std.mem.eql(u8, operation.?, "set")) {
         cmd.operation = zvs.Operation.SET;
-    } else if (std.mem.eql(u8, operation.?, "delete")) {
-        cmd.operation = zvs.Operation.DELETE;
+    } else if (std.mem.eql(u8, operation.?, "rm")) {
+        cmd.operation = zvs.Operation.REMOVE;
     }
-    std.debug.print("Command: {any}", .{cmd});
+
+    // Get the key
+    const key = args.next();
+    if (key == null) {
+        std.log.err("No key specified", .{});
+        std.process.exit(1);
+    }
+
+    cmd.key = key.?;
+
+    // Get the optional value
+    const value = args.next();
+    cmd.value = value;
     return cmd;
 }
 
