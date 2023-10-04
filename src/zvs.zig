@@ -6,12 +6,23 @@ pub const Operation = enum {
     REMOVE,
 };
 
+pub const Command = struct {
+    operation: Operation = Operation.GET,
+    key: []const u8 = undefined,
+    value: ?[]const u8 = null,
+};
+
 pub const ZVS = struct {
+    db: std.fs.File = undefined,
     map: std.StringHashMap([]const u8) = undefined,
     allocator: std.mem.Allocator = undefined,
 
-    pub fn init(self: *ZVS, allocator: std.mem.Allocator) void {
+    pub fn init(self: *ZVS, allocator: std.mem.Allocator, db: []const u8) !void {
         self.allocator = allocator;
+        self.db = try std.fs.Dir.createFile(db, std.fs.File.CreateFlags{
+            .truncate = false,
+            .read = true,
+        });
         self.map = std.StringHashMap([]const u8).init(allocator);
     }
 
