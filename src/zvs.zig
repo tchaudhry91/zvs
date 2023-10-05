@@ -19,10 +19,16 @@ pub const ZVS = struct {
 
     pub fn init(self: *ZVS, allocator: std.mem.Allocator, db: []const u8) !void {
         self.allocator = allocator;
-        self.db = try std.fs.Dir.createFile(db, std.fs.File.CreateFlags{
-            .truncate = false,
-            .read = true,
-        });
+        const cwd = std.fs.cwd();
+        self.db = try cwd.createFile(db, .{ .truncate = false });
+        // Add empty JSON array if file is empty
+        const stat = try self.db.stat();
+        if (stat.size == 0) {
+            try self.db.writeAll("[]");
+        }
+        // Seek to the back of the file before the final "]"
+        try self.db.seekFromEnd(1);
+
         self.map = std.StringHashMap([]const u8).init(allocator);
     }
 
@@ -31,38 +37,32 @@ pub const ZVS = struct {
     }
 
     pub fn set(self: *ZVS, key: []const u8, value: []const u8) !void {
-        try self.map.put(key, value);
+        // Write a WAL entry
+        const command = Command{
+            .operation = Operation.SET,
+            .key = key,
+            .value = value,
+        };
+        try std.json.stringify(command, .{ .emit_null_optional_fields = false }, self.db.writer());
     }
 
-    pub fn remove(self: *ZVS, key: []const u8) bool {
-        return self.map.remove(key);
+    pub fn remove(self: *ZVS, key: []const u8) !bool {
+        // Write a WAL entry
+        const command = Command{
+            .operation = Operation.REMOVE,
+            .key = key,
+        };
+        if (self.map.get(key) == null) {
+            return false;
+        }
+        try std.json.stringify(command, .{}, self.db.writer());
+        return true;
     }
 
     pub fn deinit(self: *ZVS) void {
         self.map.deinit();
+        self.db.close();
     }
 };
 
 const testing = std.testing;
-test "test map" {
-    const allocator = testing.allocator;
-    var zvs = ZVS{};
-    zvs.init(allocator);
-    defer zvs.deinit();
-
-    // Add
-    try zvs.set("foo", "bar");
-    try zvs.set("baz", "qux");
-
-    // Get
-    try testing.expectEqual(zvs.get("foo"), "bar");
-    try testing.expectEqual(zvs.get("baz"), "qux");
-
-    // Remove
-    try testing.expectEqual(zvs.remove("foo"), true);
-    try testing.expectEqual(zvs.remove("foo"), false);
-
-    // Get
-    try testing.expectEqual(zvs.get("foo"), null);
-    try testing.expectEqual(zvs.get("baz"), "qux");
-}

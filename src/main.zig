@@ -14,7 +14,6 @@ pub fn main() !void {
     var arena_main = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena_main.deinit();
     const allocator = arena_main.allocator();
-    _ = allocator;
 
     const params = comptime clap.parseParamsComptime(
         \\-h, --help            Display this help and exit.
@@ -56,7 +55,33 @@ pub fn main() !void {
         try printUsage();
         return error.@"Invalid arguments";
     };
-    _ = cmd;
+
+    // Build the KV Store
+    var db = zvs.ZVS{};
+    try db.init(allocator, db_file);
+    defer db.deinit();
+
+    // Dispatch the command
+    switch (cmd.operation) {
+        zvs.Operation.GET => {
+            const key = db.get(cmd.key);
+            if (key == null) {
+                return error.@"Key not found";
+            }
+            try io.getStdOut().writeAll(key.?);
+        },
+        zvs.Operation.SET => {
+            try db.set(cmd.key, cmd.value.?);
+            return;
+        },
+        zvs.Operation.REMOVE => {
+            if (try db.remove(cmd.key)) {
+                return;
+            } else {
+                return error.@"Key not found";
+            }
+        },
+    }
 }
 
 fn printUsage() !void {
