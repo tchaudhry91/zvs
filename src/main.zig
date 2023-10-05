@@ -19,7 +19,9 @@ pub fn main() !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help            Display this help and exit.
         \\-f, --file <str>      Database file to use.
-        \\<str> <str> <str>     Positional arguments.
+        \\<str>                 Operation
+        \\<str>                 Key
+        \\<str>                 Value
     );
     var diag = clap.Diagnostic{};
     var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
@@ -31,8 +33,10 @@ pub fn main() !void {
     };
     defer res.deinit();
 
-    if (res.args.help != 0)
-        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+    if (res.args.help != 0) {
+        try printUsage();
+        return;
+    }
 
     var db_file: []const u8 = "zvs.db";
     if (res.args.file) |file| {
@@ -41,14 +45,22 @@ pub fn main() !void {
 
     var cmd_args = [3]?[]const u8{ null, null, null };
     if (res.positionals.len > cmd_args.len) {
-        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+        try printUsage();
+        return error.@"Too many arguments";
     }
     for (res.positionals, 0..) |arg, i| {
         cmd_args[i] = arg;
     }
 
-    var cmd = try parseArgs(cmd_args);
-    std.debug.print("Command: {any}", .{cmd});
+    var cmd = parseArgs(cmd_args) catch {
+        try printUsage();
+        return error.@"Invalid arguments";
+    };
+    _ = cmd;
+}
+
+fn printUsage() !void {
+    try std.io.getStdErr().writeAll("ZVS. A simple key-value store.\nUsage: zvs [-f <file>] <operation> <key> [<value>]\n");
 }
 
 fn parseArgs(args: [3]?[]const u8) !zvs.Command {
@@ -57,8 +69,7 @@ fn parseArgs(args: [3]?[]const u8) !zvs.Command {
     // Get the operation
     const operation = args[0];
     if (operation == null) {
-        std.log.err("No operation specified", .{});
-        std.process.exit(1);
+        return error.@"Operation is required";
     }
     if (std.mem.eql(u8, operation.?, "set")) {
         cmd.operation = zvs.Operation.SET;
@@ -69,8 +80,7 @@ fn parseArgs(args: [3]?[]const u8) !zvs.Command {
     // Get the key
     const key = args[1];
     if (key == null) {
-        std.log.err("No key specified", .{});
-        std.process.exit(1);
+        return error.@"Key is required";
     }
 
     cmd.key = key.?;
