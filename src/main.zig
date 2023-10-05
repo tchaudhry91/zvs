@@ -64,11 +64,11 @@ pub fn main() !void {
     // Dispatch the command
     switch (cmd.operation) {
         zvs.Operation.GET => {
-            const key = db.get(cmd.key);
-            if (key == null) {
+            const val = try db.get(cmd.key);
+            if (val == null) {
                 return error.@"Key not found";
             }
-            try io.getStdOut().writeAll(key.?);
+            try io.getStdOut().writeAll(val.?);
         },
         zvs.Operation.SET => {
             try db.set(cmd.key, cmd.value.?);
