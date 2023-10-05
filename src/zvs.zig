@@ -10,6 +10,19 @@ pub const Command = struct {
     operation: Operation = Operation.GET,
     key: []const u8 = undefined,
     value: ?[]const u8 = null,
+    max_value_size: usize = 4096,
+
+    pub fn serialize(self: Command, db: std.fs.File) !void {
+        switch (self.operation) {
+            Operation.SET => {
+                return std.fmt.format(db.writer(), "{s}|{s}|{s}~", .{ "s", self.key, self.value.? });
+            },
+            Operation.REMOVE => {
+                return std.fmt.format(db.writer(), "{s}|{s}~", .{ "r", self.key });
+            },
+            else => unreachable,
+        }
+    }
 };
 
 pub const ZVS = struct {
@@ -21,15 +34,14 @@ pub const ZVS = struct {
         self.allocator = allocator;
         const cwd = std.fs.cwd();
         self.db = try cwd.createFile(db, .{ .truncate = false });
-        // Add empty JSON array if file is empty
-        const stat = try self.db.stat();
-        if (stat.size == 0) {
-            try self.db.writeAll("[]");
-        }
-        // Seek to the back of the file before the final "]"
-        try self.db.seekFromEnd(1);
-
         self.map = std.StringHashMap([]const u8).init(allocator);
+
+        // Read the WAL
+        self.consume_wal();
+    }
+
+    pub fn consume_wal(self: *ZVS) !void {
+        _ = self;
     }
 
     pub fn get(self: *ZVS, key: []const u8) ?[]const u8 {
@@ -43,7 +55,7 @@ pub const ZVS = struct {
             .key = key,
             .value = value,
         };
-        try std.json.stringify(command, .{ .emit_null_optional_fields = false }, self.db.writer());
+        try command.serialize(self.db);
     }
 
     pub fn remove(self: *ZVS, key: []const u8) !bool {
@@ -55,7 +67,7 @@ pub const ZVS = struct {
         if (self.map.get(key) == null) {
             return false;
         }
-        try std.json.stringify(command, .{}, self.db.writer());
+        try command.serialize(self.db);
         return true;
     }
 
